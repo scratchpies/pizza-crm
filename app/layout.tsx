@@ -1,10 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
   title: "Scratch Pies CRM",
   description: "Customer relationship management for Scratch Pies",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Scratch Pies",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#7a3e1d",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
