@@ -27,15 +27,28 @@ export default async function ReportsPage({
       orderBy: { name: "asc" },
       take: 500,
     }),
-    prisma.opportunity.findMany({
-      where: {
-        status: { in: ["Open", "Negotiation", "Follow-up"] },
-        updatedAt: { lt: thirtyDaysAgo },
-      },
-      include: { contact: { select: { id: true, name: true, phone: true, email: true } } },
-      orderBy: { updatedAt: "asc" },
-      take: 500,
-    }),
+    prisma.opportunity
+      .findMany({
+        where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
+        include: {
+          contact: { select: { id: true, name: true, phone: true, email: true } },
+          attempts: { orderBy: { contactedAt: "desc" }, take: 1 },
+        },
+        take: 500,
+      })
+      .then((leads) =>
+        leads
+          // Stale = never contacted at all, or last real outreach touch was
+          // 30+ days ago. Uses the actual ContactAttempt log (same source the
+          // Leads tab's staleness color-coding uses) instead of the
+          // Opportunity's generic updatedAt, which bumps on any field edit
+          // (stage, priority, notes...) whether or not you actually reached out.
+          .filter((o) => {
+            const lastContacted = o.attempts[0]?.contactedAt;
+            return !lastContacted || lastContacted.getTime() < thirtyDaysAgo.getTime();
+          })
+          .sort((a, b) => (a.attempts[0]?.contactedAt?.getTime() ?? 0) - (b.attempts[0]?.contactedAt?.getTime() ?? 0))
+      ),
     prisma.sale.findMany({
       where: { eventDate: { gte: now, lte: sixtyDaysAhead } },
       include: { contact: { select: { id: true, name: true } } },
@@ -103,7 +116,8 @@ export default async function ReportsPage({
       {tab === "stale" && (
         <div>
           <p className="text-sm text-neutral-600 mb-3">
-            Open leads that haven&apos;t been updated in 30+ days. Worth a follow-up or marking as lost.
+            Open leads that haven&apos;t actually been contacted in 30+ days (or never at all). Worth a follow-up
+            or marking as lost.
           </p>
           <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
             {staleLeads.map((o) => (
@@ -122,7 +136,9 @@ export default async function ReportsPage({
                   </div>
                 </div>
                 <span className="text-neutral-500">
-                  Last touched {new Date(o.updatedAt).toLocaleDateString()}
+                  {o.attempts[0]?.contactedAt
+                    ? `Last contacted ${formatDate(o.attempts[0].contactedAt)}`
+                    : "Never contacted"}
                 </span>
               </div>
             ))}

@@ -23,9 +23,5 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     },
   });
 
-  // bump the opportunity's updatedAt too so "stale leads" (sorted by updatedAt)
-  // reflects that someone just touched it.
-  await prisma.opportunity.update({ where: { id: params.id }, data: { updatedAt: new Date() } });
-
   return NextResponse.json({ attempt }, { status: 201 });
 }
