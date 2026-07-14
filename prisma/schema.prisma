@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Schema modeled directly on the real "Scratch Pies CRM" spreadsheet
+// (Customers / Opportunities / Events_Sales tabs), which is itself based on
+// the Copper CRM template. Three entities:
+//   Contact      -> "Customers" tab. The master list. Exported to Omnisend.
+//   Opportunity  -> "Opportunities" tab. The lead/inquiry pipeline (event requests).
+//   Sale         -> "Events_Sales" tab. Booked catering jobs: payments, pizza
+//                    choices, staffing. A Sale can trace back to the specific
+//                    Opportunity it was won from via `opportunityId`.
+
+// Tracks failed login attempts per IP so the login endpoint can lock out
+// brute-force guessing. One row per IP address that has ever failed a login.
+model LoginAttempt {
+  ip          String    @id
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  sourceId      String?   @unique // original "C_12" id from the spreadsheet, for traceability
+
+  name          String
+  tag           String?   // freeform label, e.g. "Guest", "Friend", "Repeat"
+  contactType   String    @default("Potential Customer") // "Potential Customer" | "Current Customer" | "Other"
+
+  email         String?
+  phone         String?
+
+  address       String?
+  city          String?
+  zip           String?
+  country       String?   @default("US")
+
+  social        String?
+  assignee      String?   // staff member who owns this contact
+  description   String?
+
+  doNotEmail    Boolean   @default(false) // set true if they unsubscribe/ask not to be emailed
+
+  opportunities Opportunity[]
+  sales         Sale[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([contactType])
+  @@index([email])
+}
+
+model Opportunity {
+  id               String    @id @default(cuid())
+  sourceId         String?   @unique // original "26_1" id from the spreadsheet
+
+  name             String    // e.g. "Wedding (12/12/26)"
+  tag              String?
+
+  contactId        String?
+  contact          Contact?  @relation(fields: [contactId], references: [id])
+  customerNameRaw  String?   // as typed in the sheet, kept even if we couldn't match a Contact
+
+  stage            String?   // Info Sent | Follow-up | Deposit Paid | Contract Sent | Negotiation | Requested More Info
+  value            Decimal?  @db.Decimal(10, 2)
+  eventDate        DateTime?
+  eventDateRaw     String?   // for messy values the sheet had like "?/?/2027"
+  winPct           Float?    // 1.0 = 100% = won. This is what promotes a lead to a Sale.
+  status           String    @default("Open") // Open | Won | Lost | Abandoned | Negotiation
+  lossReason       String?
+  priority         String?   // High | Med | Low
+  source           String?   // Referral | Advertising | Text | Email | Social | Other
+  description      String?
+
+  sales            Sale[]    // usually 0 or 1 -- the booked job(s) this lead turned into
+  attempts         ContactAttempt[] // every time we reached out, oldest to newest
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status])
+  @@index([eventDate])
+  @@index([winPct])
+}
+
+// One row per outreach touch on a lead (email sent, call made, text, etc).
+// Lets the Leads page show "reached out 4 times, last one 12 days ago" instead
+// of just a single last-contacted date, so it's obvious when a lead has been
+// chased enough times that it should be marked abandoned.
+model ContactAttempt {
+  id            String      @id @default(cuid())
+
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  contactedAt   DateTime    @default(now())
+  method        String?     // Email | Call | Text | Social | Other
+  note          String?
+
+  createdAt     DateTime    @default(now())
+
+  @@index([opportunityId])
+  @@index([contactedAt])
+}
+
+model Sale {
+  id                  String       @id @default(cuid())
+  sourceId            String?      @unique // original "26_14" id from the spreadsheet
+
+  opportunityId       String?
+  opportunity         Opportunity? @relation(fields: [opportunityId], references: [id])
+
+  contactId           String?
+  contact             Contact?     @relation(fields: [contactId], references: [id])
+  clientNameRaw       String?      // as typed in the sheet
+
+  eventDate           DateTime?
+  location            String?
+  guests              Int?
+  numPizzas           Int?
+  numDoughs           Int?
+
+  pizza1              String?
+  pizza2              String?
+  pizza3              String?
+  pizza4              String?
+  additionalPizza     String?
+  additionalItems     String?
+  specialRequests     String?
+
+  totalCost           Decimal?     @db.Decimal(10, 2)
+  depositPaid         Decimal?     @db.Decimal(10, 2)
+  tip                 Decimal?     @db.Decimal(10, 2)
+  depositMethod       String?
+  finalPaymentMethod  String?
+  paidInFull          Boolean?
+
+  assignedStaff       String?
+  eventStatus         String?      // e.g. DONE, booked, etc.
+  ovensUsed           Int?
+  postEventFeedback   String?
+  notes               String?
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([eventDate])
+  @@index([eventStatus])
+}

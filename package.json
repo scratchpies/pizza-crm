@@ -1,0 +1,40 @@
+{
+  "name": "pizza-crm",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NODE_OPTIONS=--openssl-legacy-provider next dev",
+    "build": "prisma generate && NODE_OPTIONS=--openssl-legacy-provider next build",
+    "start": "NODE_OPTIONS=--openssl-legacy-provider next start",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js",
+    "db:backfill-attempts": "node prisma/backfill-attempts.js",
+    "setup-2fa": "node scripts/setup-2fa.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "lucide-react": "^1.24.0",
+    "next": "14.2.35",
+    "otplib": "^12.0.1",
+    "papaparse": "^5.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "prisma": "^5.20.0",
+    "qrcode-terminal": "^0.12.0",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3"
+  }
+}

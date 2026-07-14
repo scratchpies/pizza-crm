@@ -1,0 +1,432 @@
+[
+  {
+    "sourceId": "26_59",
+    "dates": [
+      "2026-05-15",
+      "2026-05-24",
+      "2026-06-03"
+    ],
+    "raw": "5/15,5/24,6/3",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_58",
+    "dates": [
+      "2026-05-14"
+    ],
+    "raw": "5/14",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_38",
+    "dates": [
+      "2026-04-14"
+    ],
+    "raw": "4/14",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_40",
+    "dates": [
+      "2026-04-20",
+      "2026-04-22"
+    ],
+    "raw": "4/20,4/22",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_41",
+    "dates": [
+      "2026-04-20",
+      "2026-04-25"
+    ],
+    "raw": "4/20,4/25",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_42",
+    "dates": [
+      "2026-04-18",
+      "2026-04-23",
+      "2026-05-07"
+    ],
+    "raw": "4/18,4/23,5/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_52",
+    "dates": [
+      "2026-05-04",
+      "2026-05-24"
+    ],
+    "raw": "5/4,5/24",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_44",
+    "dates": [
+      "2026-04-23",
+      "2026-05-07"
+    ],
+    "raw": "4/23,5/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_45",
+    "dates": [
+      "2026-04-24"
+    ],
+    "raw": "4/24",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_46",
+    "dates": [
+      "2026-04-29"
+    ],
+    "raw": "4/29",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_47",
+    "dates": [
+      "2026-04-29"
+    ],
+    "raw": "4/29",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_50",
+    "dates": [
+      "2026-05-04"
+    ],
+    "raw": "5/4",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_51",
+    "dates": [
+      "2026-05-04",
+      "2026-05-05",
+      "2026-05-07"
+    ],
+    "raw": "5/4,5/5,5/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_2",
+    "dates": [
+      "2026-05-24"
+    ],
+    "raw": "2025,5/24",
+    "ignoredTokens": [
+      "2025"
+    ]
+  },
+  {
+    "sourceId": "26_53",
+    "dates": [
+      "2026-05-07"
+    ],
+    "raw": "5/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_43",
+    "dates": [
+      "2026-04-18",
+      "2026-04-23",
+      "2026-05-24"
+    ],
+    "raw": "4/18,4/23,5/24",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_19",
+    "dates": [
+      "2026-03-19",
+      "2026-04-23",
+      "2026-05-24"
+    ],
+    "raw": "3/19,4/23,5/24",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_65",
+    "dates": [
+      "2026-05-24"
+    ],
+    "raw": "5/24",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_66",
+    "dates": [
+      "2026-05-25"
+    ],
+    "raw": "5/25",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_67",
+    "dates": [
+      "2026-05-26"
+    ],
+    "raw": "5/26",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_68",
+    "dates": [
+      "2026-05-27"
+    ],
+    "raw": "5/27",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_70",
+    "dates": [
+      "2026-05-29",
+      "2026-06-11",
+      "2026-06-18"
+    ],
+    "raw": "5/29,6/11,6/18",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_71",
+    "dates": [
+      "2026-05-31"
+    ],
+    "raw": "5/31",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_72",
+    "dates": [
+      "2026-06-02"
+    ],
+    "raw": "6/2",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_73",
+    "dates": [
+      "2026-06-04",
+      "2026-06-07"
+    ],
+    "raw": "6/4,6/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_74",
+    "dates": [
+      "2026-06-05"
+    ],
+    "raw": "6/5",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_75",
+    "dates": [
+      "2026-06-07"
+    ],
+    "raw": "6/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_76",
+    "dates": [
+      "2026-06-07"
+    ],
+    "raw": "6/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_77",
+    "dates": [
+      "2026-06-08"
+    ],
+    "raw": "6/8",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_78",
+    "dates": [
+      "2026-06-08",
+      "2026-06-11",
+      "2026-06-12"
+    ],
+    "raw": "6/8,6/11,6/12",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_80",
+    "dates": [
+      "2026-06-11"
+    ],
+    "raw": "6/11",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_81",
+    "dates": [
+      "2026-06-13"
+    ],
+    "raw": "6/13",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_82",
+    "dates": [
+      "2026-06-14"
+    ],
+    "raw": "6/14",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_83",
+    "dates": [
+      "2026-06-15"
+    ],
+    "raw": "6/15",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_84",
+    "dates": [
+      "2026-06-16"
+    ],
+    "raw": "6/16",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_85",
+    "dates": [
+      "2026-06-20"
+    ],
+    "raw": "6/20",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_86",
+    "dates": [
+      "2026-06-23"
+    ],
+    "raw": "6/23",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_87",
+    "dates": [
+      "2026-06-26"
+    ],
+    "raw": "6/26",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_88",
+    "dates": [
+      "2026-06-26"
+    ],
+    "raw": "6/26",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_89",
+    "dates": [
+      "2026-06-27"
+    ],
+    "raw": "6/27",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_90",
+    "dates": [
+      "2026-06-30"
+    ],
+    "raw": "6/30",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_91",
+    "dates": [
+      "2026-06-30",
+      "2026-07-06"
+    ],
+    "raw": "6/30,7/6",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_92",
+    "dates": [
+      "2026-06-30"
+    ],
+    "raw": "6/30",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_93",
+    "dates": [
+      "2026-07-01"
+    ],
+    "raw": "7/1",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_94",
+    "dates": [
+      "2026-07-01"
+    ],
+    "raw": "7/1",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_95",
+    "dates": [
+      "2026-07-07"
+    ],
+    "raw": "7/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_96",
+    "dates": [
+      "2026-07-07"
+    ],
+    "raw": "7/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_97",
+    "dates": [
+      "2026-07-07"
+    ],
+    "raw": "7/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_98",
+    "dates": [
+      "2026-07-07"
+    ],
+    "raw": "7/7",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_99",
+    "dates": [
+      "2026-07-08"
+    ],
+    "raw": "7/8",
+    "ignoredTokens": []
+  },
+  {
+    "sourceId": "26_100",
+    "dates": [
+      "2026-07-08"
+    ],
+    "raw": "7/8",
+    "ignoredTokens": []
+  }
+]
