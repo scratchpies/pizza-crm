@@ -10,6 +10,12 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Scratch Pies",
   },
+  icons: {
+    // Static files (not the dynamic /apple-icon route) -- iOS Safari's
+    // "Add to Home Screen" is unreliable about picking up icons served from
+    // a dynamic route with a cache-busting query string.
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
