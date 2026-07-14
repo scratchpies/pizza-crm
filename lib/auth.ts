@@ -4,7 +4,7 @@
 // Node.js, so this file is safe to import from middleware.ts.
 
 const COOKIE_NAME = "pizza_crm_session";
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours -- log in again once a day
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET;
