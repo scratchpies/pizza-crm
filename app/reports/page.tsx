@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { RotateCcw, Clock, CalendarClock } from "lucide-react";
+import { Clock, CalendarClock } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -10,23 +10,12 @@ export default async function ReportsPage({
 }: {
   searchParams: { tab?: string };
 }) {
-  const tab = searchParams.tab || "winback";
+  const tab = searchParams.tab || "stale";
   const now = new Date();
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAhead = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [winback, staleLeads, upcomingSales, upcomingLeadDates] = await Promise.all([
-    prisma.contact.findMany({
-      where: {
-        contactType: "Current Customer",
-        doNotEmail: false,
-        sales: { none: { eventDate: { gte: ninetyDaysAgo } } },
-      },
-      include: { sales: { orderBy: { eventDate: "desc" }, take: 1 } },
-      orderBy: { name: "asc" },
-      take: 500,
-    }),
+  const [staleLeads, upcomingSales, upcomingLeadDates] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -64,7 +53,6 @@ export default async function ReportsPage({
   ]);
 
   const tabs = [
-    { key: "winback", label: "Win-back", count: winback.length, icon: RotateCcw },
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
   ];
@@ -73,7 +61,7 @@ export default async function ReportsPage({
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -88,30 +76,6 @@ export default async function ReportsPage({
           </Link>
         ))}
       </div>
-
-      {tab === "winback" && (
-        <div>
-          <p className="text-sm text-neutral-600 mb-3">
-            Current customers with no sale in the last 90 days (or none on record). Good candidates for a
-            check-in email.
-          </p>
-          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
-            {winback.map((c) => (
-              <div key={c.id} className="p-3 text-sm flex justify-between gap-4">
-                <Link href={`/contacts/${c.id}`} className="font-medium text-crust hover:underline">
-                  {c.name}
-                </Link>
-                <span className="text-neutral-500">
-                  {c.sales[0]?.eventDate
-                    ? `Last sale: ${formatDate(c.sales[0].eventDate)}`
-                    : "No sale on record"}
-                </span>
-              </div>
-            ))}
-            {winback.length === 0 && <p className="p-3 text-sm text-neutral-500">Nobody due for a win-back yet.</p>}
-          </div>
-        </div>
-      )}
 
       {tab === "stale" && (
         <div>

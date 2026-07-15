@@ -5,7 +5,6 @@ import {
   UserCheck,
   UserPlus,
   Target,
-  RotateCcw,
   Clock,
   CalendarClock,
   DollarSign,
@@ -15,7 +14,6 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const now = new Date();
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAhead = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
   const yearStart = new Date(now.getFullYear(), 0, 1);
@@ -26,7 +24,6 @@ export default async function DashboardPage() {
     potentialCustomers,
     openLeads,
     upcomingSales,
-    winbackCandidates,
     staleLeads,
     salesThisYear,
   ] = await Promise.all([
@@ -35,12 +32,6 @@ export default async function DashboardPage() {
     prisma.contact.count({ where: { contactType: "Potential Customer" } }),
     prisma.opportunity.count({ where: { status: { in: ["Open", "Negotiation"] } } }),
     prisma.sale.count({ where: { eventDate: { gte: now, lte: sixtyDaysAhead } } }),
-    prisma.contact.count({
-      where: {
-        contactType: "Current Customer",
-        sales: { none: { eventDate: { gte: ninetyDaysAgo } } },
-      },
-    }),
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -90,13 +81,6 @@ export default async function DashboardPage() {
       color: "text-neutral-500",
     },
     { label: "Open leads", value: openLeads, href: "/leads", icon: Target, color: "text-crust" },
-    {
-      label: "Win-back (quiet 90+ days)",
-      value: winbackCandidates,
-      href: "/reports?tab=winback",
-      icon: RotateCcw,
-      color: "text-sauce",
-    },
     {
       label: "Stale leads",
       value: staleLeads,
