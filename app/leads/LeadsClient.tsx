@@ -23,7 +23,7 @@ type Opportunity = {
   source: string | null;
   contact: { id: string; name: string } | null;
   customerNameRaw: string | null;
-  sales: { id: string }[];
+  sales: { id: string; depositPaid: number | null }[];
   attempts: Attempt[];
   _count: { attempts: number };
 };
@@ -240,6 +240,7 @@ export default function LeadsClient() {
               <th className="p-3 font-medium">Status</th>
               <th className="p-3 font-medium">Confidence</th>
               <th className="p-3 font-medium">Value</th>
+              <th className="p-3 font-medium">Deposit paid</th>
               <th className="p-3 font-medium">
                 <button
                   className="flex items-center gap-1 hover:text-neutral-700"
@@ -257,14 +258,14 @@ export default function LeadsClient() {
           <tbody>
             {loading && (
               <tr>
-                <td className="p-3 text-neutral-500" colSpan={10}>
+                <td className="p-3 text-neutral-500" colSpan={11}>
                   Loading...
                 </td>
               </tr>
             )}
             {!loading && sortedLeads.length === 0 && (
               <tr>
-                <td className="p-3 text-neutral-500" colSpan={10}>
+                <td className="p-3 text-neutral-500" colSpan={11}>
                   No leads found.
                 </td>
               </tr>
@@ -335,6 +336,15 @@ export default function LeadsClient() {
                     <td className="p-3" onClick={stop}>
                       <ValueCell value={l.value} onSave={(val) => updateValue(l.id, val)} />
                     </td>
+                    <td className="p-3">
+                      {l.sales[0]?.depositPaid != null ? (
+                        <span className="text-basil font-medium">
+                          ${Number(l.sales[0].depositPaid).toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-neutral-300">—</span>
+                      )}
+                    </td>
                     <td className="p-3 whitespace-nowrap" onClick={stop}>
                       <EventDateCell
                         opportunityId={l.id}
@@ -373,7 +383,7 @@ export default function LeadsClient() {
                   </tr>
                   {expanded === l.id && (
                     <tr className="bg-neutral-50/70">
-                      <td colSpan={10} className="p-3" onClick={stop}>
+                      <td colSpan={11} className="p-3" onClick={stop}>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-sm">
                           <div>
                             <span className="block text-xs font-semibold text-neutral-500 mb-1">NOTES</span>

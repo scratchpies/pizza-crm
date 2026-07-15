@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: "desc" },
     include: {
       contact: { select: { id: true, name: true, email: true, phone: true } },
-      sales: { select: { id: true } },
+      sales: { select: { id: true, depositPaid: true } },
       attempts: { orderBy: { contactedAt: "desc" }, take: 1 },
       _count: { select: { attempts: true } },
     },
