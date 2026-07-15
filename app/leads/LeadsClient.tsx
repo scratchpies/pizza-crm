@@ -43,9 +43,19 @@ function staleness(days: number | null) {
   return { bg: "bg-sauce/15", text: "text-sauce", label: `${days}d ago` };
 }
 
+// contactedAt is stored as a date-only value at UTC midnight (see
+// todayLocalDateStr()), not a real point-in-time timestamp. Diffing it
+// against Date.now() directly over- or under-counts by a day depending on
+// what time of day it is locally, since UTC rolls to the next calendar day
+// hours before US local time does. Normalize both sides to a plain calendar
+// date first so this is always a whole-day diff, immune to time-of-day.
 function daysAgo(iso: string | null): number | null {
   if (!iso) return null;
-  return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+  const [cy, cm, cd] = toDateInputValue(iso).split("-").map(Number);
+  const [ty, tm, td] = todayLocalDateStr().split("-").map(Number);
+  const contactedUTC = Date.UTC(cy, cm - 1, cd);
+  const todayUTC = Date.UTC(ty, tm - 1, td);
+  return Math.round((todayUTC - contactedUTC) / (1000 * 60 * 60 * 24));
 }
 
 // Red (0%) -> yellow (50%) -> green (100%) gradient for the confidence column.
