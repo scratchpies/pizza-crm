@@ -11,6 +11,7 @@
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "db:backfill-attempts": "node prisma/backfill-attempts.js",
+    "db:backfill-current-customers": "node prisma/backfill-current-customers.js",
     "setup-2fa": "node scripts/setup-2fa.js"
   },
   "prisma": {

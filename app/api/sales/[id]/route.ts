@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { promoteToCurrentCustomer } from "@/lib/customerType";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const sale = await prisma.sale.findUnique({
@@ -24,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if ("eventDate" in body) data.eventDate = body.eventDate ? new Date(body.eventDate) : null;
 
   const sale = await prisma.sale.update({ where: { id: params.id }, data });
+  await promoteToCurrentCustomer(sale.contactId);
   return NextResponse.json({ sale });
 }
 

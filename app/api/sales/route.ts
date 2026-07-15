@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { promoteToCurrentCustomer } from "@/lib/customerType";
 import type { Prisma } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
@@ -59,6 +60,8 @@ export async function POST(req: NextRequest) {
       notes: body.notes || null,
     },
   });
+
+  await promoteToCurrentCustomer(sale.contactId);
 
   return NextResponse.json({ sale }, { status: 201 });
 }
