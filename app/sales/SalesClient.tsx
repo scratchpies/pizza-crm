@@ -25,30 +25,38 @@ export default function SalesClient() {
   const [loading, setLoading] = useState(true);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
+  // Always fetch every sale, unfiltered -- the "Upcoming only" checkbox only
+  // changes which rows show in the table below. The summary cards (Total
+  // revenue, Outstanding, etc.) always reflect every sale ever, so they stay
+  // a stable grand total instead of silently changing meaning with the filter.
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (upcoming) params.set("upcoming", "1");
-    const res = await fetch(`/api/sales?${params.toString()}`);
+    const res = await fetch("/api/sales");
     const data = await res.json();
     setSales(data.sales || []);
     setLoading(false);
-  }, [upcoming]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const displayedSales = useMemo(() => {
+    if (!upcoming) return sales;
+    const now = new Date();
+    return sales.filter((s) => s.eventDate && new Date(s.eventDate) >= now);
+  }, [sales, upcoming]);
+
   // Sort by event date, nulls always last regardless of direction.
   const sortedSales = useMemo(() => {
-    const withDate = sales.filter((s) => s.eventDate);
-    const withoutDate = sales.filter((s) => !s.eventDate);
+    const withDate = displayedSales.filter((s) => s.eventDate);
+    const withoutDate = displayedSales.filter((s) => !s.eventDate);
     withDate.sort((a, b) => {
       const diff = new Date(a.eventDate as string).getTime() - new Date(b.eventDate as string).getTime();
       return sortDir === "asc" ? diff : -diff;
     });
     return [...withDate, ...withoutDate];
-  }, [sales, sortDir]);
+  }, [displayedSales, sortDir]);
 
   const totalRevenue = sales.reduce((sum, s) => sum + Number(s.totalCost || 0), 0);
   const outstanding = sales.reduce((sum, s) => {
@@ -111,7 +119,7 @@ export default function SalesClient() {
                 </td>
               </tr>
             )}
-            {!loading && sales.length === 0 && (
+            {!loading && sortedSales.length === 0 && (
               <tr>
                 <td className="p-3 text-neutral-500" colSpan={8}>
                   No sales found.
