@@ -41,12 +41,21 @@ export default async function DashboardPage() {
         sales: { none: { eventDate: { gte: ninetyDaysAgo } } },
       },
     }),
-    prisma.opportunity.count({
-      where: {
-        status: { in: ["Open", "Negotiation", "Follow-up"] },
-        updatedAt: { lt: thirtyDaysAgo },
-      },
-    }),
+    prisma.opportunity
+      .findMany({
+        where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
+        select: { attempts: { orderBy: { contactedAt: "desc" }, take: 1, select: { contactedAt: true } } },
+        take: 1000,
+      })
+      // Same "stale" definition as the Reports tab: never contacted, or last
+      // real outreach touch was 30+ days ago -- not just "not edited lately."
+      .then(
+        (leads) =>
+          leads.filter((o) => {
+            const lastContacted = o.attempts[0]?.contactedAt;
+            return !lastContacted || lastContacted.getTime() < thirtyDaysAgo.getTime();
+          }).length
+      ),
     prisma.sale.findMany({
       where: { eventDate: { gte: yearStart } },
       select: { eventDate: true, totalCost: true },
