@@ -61,7 +61,7 @@ function confidenceColor(pct: number) {
 export default function LeadsClient() {
   const router = useRouter();
   const [leads, setLeads] = useState<Opportunity[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>(["Open", "Negotiation"]);
   const [needsSale, setNeedsSale] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
