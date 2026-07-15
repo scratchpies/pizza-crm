@@ -59,10 +59,10 @@ export default function SalesClient() {
     return [...withDate, ...withoutDate];
   }, [displayedSales, sortDir]);
 
-  // Revenue = total cost + tip. Deposit is NOT added separately -- it's a
-  // partial payment toward totalCost, already counted inside it, not extra
-  // money on top.
-  const totalRevenue = sales.reduce((sum, s) => sum + Number(s.totalCost || 0) + Number(s.tip || 0), 0);
+  // Revenue = sum of totalCost only. Deposit and tip are NOT added
+  // separately -- deposit is a partial payment toward totalCost (already
+  // counted inside it), and tip is excluded per the business's preference.
+  const totalRevenue = sales.reduce((sum, s) => sum + Number(s.totalCost || 0), 0);
   const outstanding = sales.reduce((sum, s) => {
     if (s.paidInFull) return sum;
     const owed = (s.totalCost || 0) - (s.depositPaid || 0);
