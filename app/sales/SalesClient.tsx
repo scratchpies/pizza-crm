@@ -12,6 +12,7 @@ type Sale = {
   guests: number | null;
   totalCost: number | null;
   depositPaid: number | null;
+  tip: number | null;
   paidInFull: boolean | null;
   eventStatus: string | null;
   contact: { id: string; name: string } | null;
@@ -58,7 +59,10 @@ export default function SalesClient() {
     return [...withDate, ...withoutDate];
   }, [displayedSales, sortDir]);
 
-  const totalRevenue = sales.reduce((sum, s) => sum + Number(s.totalCost || 0), 0);
+  // Revenue = total cost + tip. Deposit is NOT added separately -- it's a
+  // partial payment toward totalCost, already counted inside it, not extra
+  // money on top.
+  const totalRevenue = sales.reduce((sum, s) => sum + Number(s.totalCost || 0) + Number(s.tip || 0), 0);
   const outstanding = sales.reduce((sum, s) => {
     if (s.paidInFull) return sum;
     const owed = (s.totalCost || 0) - (s.depositPaid || 0);
