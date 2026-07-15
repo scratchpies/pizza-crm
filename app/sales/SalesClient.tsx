@@ -107,6 +107,7 @@ export default function SalesClient() {
               <th className="p-3">Location</th>
               <th className="p-3">Guests</th>
               <th className="p-3">Total</th>
+              <th className="p-3">Deposit paid</th>
               <th className="p-3">Balance</th>
               <th className="p-3">Status</th>
             </tr>
@@ -114,14 +115,14 @@ export default function SalesClient() {
           <tbody>
             {loading && (
               <tr>
-                <td className="p-3 text-neutral-500" colSpan={8}>
+                <td className="p-3 text-neutral-500" colSpan={9}>
                   Loading...
                 </td>
               </tr>
             )}
             {!loading && sortedSales.length === 0 && (
               <tr>
-                <td className="p-3 text-neutral-500" colSpan={8}>
+                <td className="p-3 text-neutral-500" colSpan={9}>
                   No sales found.
                 </td>
               </tr>
@@ -148,6 +149,9 @@ export default function SalesClient() {
                   <td className="p-3">{s.location || "—"}</td>
                   <td className="p-3">{s.guests ?? "—"}</td>
                   <td className="p-3">{s.totalCost != null ? `$${Number(s.totalCost).toLocaleString()}` : "—"}</td>
+                  <td className="p-3">
+                    {s.depositPaid != null ? `$${Number(s.depositPaid).toLocaleString()}` : "—"}
+                  </td>
                   <td className="p-3">
                     {s.paidInFull ? (
                       <span className="text-basil">Paid</span>
