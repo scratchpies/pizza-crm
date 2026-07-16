@@ -54,7 +54,11 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         ) : (
           <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
             {contact.opportunities.map((o) => (
-              <div key={o.id} className="p-3 text-sm flex justify-between gap-4">
+              <Link
+                key={o.id}
+                href={`/leads?highlight=${o.id}`}
+                className="flex justify-between gap-4 p-3 text-sm hover:bg-neutral-50 transition-colors"
+              >
                 <div>
                   <div className="font-medium">{o.name}</div>
                   <div className="text-neutral-500">
@@ -63,7 +67,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
                   </div>
                 </div>
                 {o.value != null && <div className="font-medium">${Number(o.value).toLocaleString()}</div>}
-              </div>
+              </Link>
             ))}
           </div>
         )}

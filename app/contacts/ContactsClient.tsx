@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 
 type Contact = {
@@ -23,6 +23,9 @@ export default function ContactsClient() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [q, setQ] = useState(searchParams.get("q") || "");
   const [contactType, setContactType] = useState(searchParams.get("contactType") || "");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -30,16 +33,28 @@ export default function ContactsClient() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (contactType) params.set("contactType", contactType);
+    params.set("page", String(page));
     const res = await fetch(`/api/contacts?${params.toString()}`);
     const data = await res.json();
     setContacts(data.contacts || []);
+    setTotal(data.total ?? 0);
+    setPageSize(data.pageSize ?? 50);
     setLoading(false);
+  }, [q, contactType, page]);
+
+  // Any time the search or filter changes, jump back to page 1 -- staying on
+  // e.g. page 4 of a now-much-shorter filtered result would just show "no
+  // contacts found" instead of the results.
+  useEffect(() => {
+    setPage(1);
   }, [q, contactType]);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div>
@@ -114,7 +129,32 @@ export default function ContactsClient() {
           </tbody>
         </table>
       </div>
-      <p className="text-sm text-neutral-500 mt-2">{contacts.length} contact(s)</p>
+      <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+        <p className="text-sm text-neutral-500">{total} contact(s)</p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2 text-sm">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="flex items-center gap-1 border border-neutral-200 rounded-lg px-2 py-1 text-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-50"
+            >
+              <ChevronLeft size={14} />
+              Prev
+            </button>
+            <span className="text-neutral-500">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 border border-neutral-200 rounded-lg px-2 py-1 text-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-50"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

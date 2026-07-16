@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, AlertTriangle, ChevronDown, ArrowUpDown, Pencil, CheckCircle2 } from "lucide-react";
 import ContactPicker from "@/components/ContactPicker";
 import { formatDate, toDateInputValue, todayLocalDateStr } from "@/lib/dates";
@@ -70,8 +70,15 @@ function confidenceColor(pct: number) {
 
 export default function LeadsClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Deep-link support: /leads?highlight=<opportunityId>, used by the contact
+  // detail page to jump straight to a specific lead. If we're jumping to a
+  // specific lead, don't let the default Open/Negotiation filter hide it --
+  // it might be Won/Lost/Abandoned.
+  const highlightId = searchParams.get("highlight");
+  const highlightHandled = useRef(false);
   const [leads, setLeads] = useState<Opportunity[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>(["Open", "Negotiation"]);
+  const [statusFilter, setStatusFilter] = useState<string[]>(highlightId ? [] : ["Open", "Negotiation"]);
   const [needsSale, setNeedsSale] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -92,6 +99,18 @@ export default function LeadsClient() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Once the highlighted lead has actually loaded, auto-expand it and
+  // scroll it into view. Only runs once per page load.
+  useEffect(() => {
+    if (!highlightId || highlightHandled.current || loading) return;
+    if (!leads.some((l) => l.id === highlightId)) return;
+    highlightHandled.current = true;
+    toggleExpand(highlightId, true);
+    requestAnimationFrame(() => {
+      document.getElementById(`lead-row-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [leads, loading, highlightId]);
 
   // Sort by event date, nulls always last regardless of direction.
   const sortedLeads = useMemo(() => {
@@ -284,8 +303,11 @@ export default function LeadsClient() {
               return (
                 <Fragment key={l.id}>
                   <tr
+                    id={`lead-row-${l.id}`}
                     onClick={() => toggleExpand(l.id)}
-                    className="border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer"
+                    className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${
+                      l.id === highlightId ? "bg-crust/5" : ""
+                    }`}
                   >
                     <td className="p-3 font-medium">{l.name}</td>
                     <td className="p-3" onClick={stop}>

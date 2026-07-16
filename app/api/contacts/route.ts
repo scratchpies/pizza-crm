@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 
-// GET /api/contacts?q=&contactType=&tag=
+const PAGE_SIZE = 50;
+
+// GET /api/contacts?q=&contactType=&tag=&page=
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim();
   const contactType = searchParams.get("contactType");
   const tag = searchParams.get("tag");
+  const page = Math.max(1, Number(searchParams.get("page")) || 1);
 
   const where: Prisma.ContactWhereInput = {};
 
@@ -23,17 +26,21 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  const contacts = await prisma.contact.findMany({
-    where,
-    orderBy: { name: "asc" },
-    take: 1000,
-    include: {
-      _count: { select: { sales: true, opportunities: true } },
-      sales: { orderBy: { eventDate: "desc" }, take: 1, select: { eventDate: true } },
-    },
-  });
+  const [contacts, total] = await Promise.all([
+    prisma.contact.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      include: {
+        _count: { select: { sales: true, opportunities: true } },
+        sales: { orderBy: { eventDate: "desc" }, take: 1, select: { eventDate: true } },
+      },
+    }),
+    prisma.contact.count({ where }),
+  ]);
 
-  return NextResponse.json({ contacts });
+  return NextResponse.json({ contacts, total, page, pageSize: PAGE_SIZE });
 }
 
 // POST /api/contacts - create a new contact
