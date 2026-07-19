@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { ArrowUpDown } from "lucide-react";
-import { formatDate } from "@/lib/dates";
+import { formatDate, todayLocalDateStr } from "@/lib/dates";
 
 type Sale = {
   id: string;
@@ -44,8 +44,12 @@ export default function SalesClient() {
 
   const displayedSales = useMemo(() => {
     if (!upcoming) return sales;
-    const now = new Date();
-    return sales.filter((s) => s.eventDate && new Date(s.eventDate) >= now);
+    // Compare against the start of today (as a UTC-midnight value, matching
+    // how eventDate is stored) rather than the exact current timestamp --
+    // otherwise a same-day event gets excluded the moment UTC rolls past
+    // midnight, hours before it's actually "today" in a US timezone.
+    const todayUTC = new Date(`${todayLocalDateStr()}T00:00:00.000Z`);
+    return sales.filter((s) => s.eventDate && new Date(s.eventDate) >= todayUTC);
   }, [sales, upcoming]);
 
   // Sort by event date, nulls always last regardless of direction.
