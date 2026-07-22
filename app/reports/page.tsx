@@ -13,10 +13,13 @@ const MONTH_NAMES = [
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; month?: string };
+  searchParams: { tab?: string; month?: string; year?: string };
 }) {
   const tab = searchParams.tab || "stale";
   const now = new Date();
+  // null = all years combined. Used by the "Lost (non-conflict)" tab,
+  // filtered on the requested event's year (not when it was marked lost).
+  const selectedYear = searchParams.year ? Number(searchParams.year) : null;
   // 1-12. Defaults to the current month. Used by the "Demand by day" tab --
   // deliberately not tied to a specific year, since the whole point is to
   // aggregate every year's leads onto one generic month to spot patterns.
@@ -90,7 +93,16 @@ export default async function ReportsPage({
     }),
   ]);
 
-  const lostNonConflictValue = lostNonConflict.reduce((sum, o) => sum + Number(o.value || 0), 0);
+  // Filtered by the year of the requested event date (not the year it was
+  // marked lost -- there's no separate "lostAt" timestamp on record, and the
+  // event year is the more stable, meaningful business timeline anyway).
+  const lostYears = Array.from(
+    new Set(lostNonConflict.filter((o) => o.eventDate).map((o) => new Date(o.eventDate as Date).getUTCFullYear()))
+  ).sort((a, b) => b - a);
+  const filteredLostLeads = selectedYear
+    ? lostNonConflict.filter((o) => o.eventDate && new Date(o.eventDate).getUTCFullYear() === selectedYear)
+    : lostNonConflict;
+  const lostNonConflictValue = filteredLostLeads.reduce((sum, o) => sum + Number(o.value || 0), 0);
 
   // Aggregate onto a generic 31-day month (day-of-month, across every year
   // of data) so patterns like "the 1st of the month is popular" or "this
@@ -286,16 +298,45 @@ export default async function ReportsPage({
           <p className="text-sm text-neutral-600 mb-3">
             Lost or abandoned leads where the reason wasn&apos;t simply a date conflict (we weren&apos;t already
             booked) -- these are the ones worth digging into: price, competitor, missing features, or no reason
-            logged at all.
+            logged at all. Filtered by the year of the requested event.
           </p>
+
+          {lostYears.length > 0 && (
+            <div className="flex gap-1.5 mb-3 flex-wrap">
+              <Link
+                href="/reports?tab=lost"
+                className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                  selectedYear === null
+                    ? "bg-crust text-white"
+                    : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                }`}
+              >
+                All years
+              </Link>
+              {lostYears.map((y) => (
+                <Link
+                  key={y}
+                  href={`/reports?tab=lost&year=${y}`}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                    selectedYear === y
+                      ? "bg-crust text-white"
+                      : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                  }`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-3 flex items-center justify-between">
-            <span className="text-sm text-neutral-600">{lostNonConflict.length} lead(s)</span>
+            <span className="text-sm text-neutral-600">{filteredLostLeads.length} lead(s)</span>
             <span className="text-sm font-medium text-neutral-800">
               ${lostNonConflictValue.toLocaleString()} in estimated value
             </span>
           </div>
           <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
-            {lostNonConflict.map((o) => (
+            {filteredLostLeads.map((o) => (
               <div key={o.id} className="p-3 text-sm flex justify-between gap-4">
                 <div>
                   <div className="font-medium">{o.name}</div>
@@ -308,6 +349,7 @@ export default async function ReportsPage({
                       o.customerNameRaw
                     )}{" "}
                     · {o.status}
+                    {o.eventDate ? ` · ${formatDate(o.eventDate)}` : ""}
                   </div>
                 </div>
                 <div className="text-right">
@@ -320,9 +362,9 @@ export default async function ReportsPage({
                 </div>
               </div>
             ))}
-            {lostNonConflict.length === 0 && (
+            {filteredLostLeads.length === 0 && (
               <p className="p-3 text-sm text-neutral-500">
-                No lost/abandoned leads outside of date conflicts right now.
+                No lost/abandoned leads outside of date conflicts{selectedYear ? ` in ${selectedYear}` : ""}.
               </p>
             )}
           </div>
