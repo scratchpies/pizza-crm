@@ -33,7 +33,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, lostNonConflict, allSalesStats] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandUnlinkedSales, lostNonConflict, allSalesStats] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -77,6 +77,17 @@ export default async function ReportsPage({
       select: { eventDate: true },
       take: 5000,
     }),
+    // Plus any Sale that ISN'T linked back to a lead -- a direct booking
+    // entered straight into the Sales tab, or an older historical import
+    // that never got matched to a lead record, still represents real demand
+    // for that date. Sales that DO have a linked lead are skipped here since
+    // that lead's own eventDate already counts it -- otherwise the same
+    // request would be counted twice.
+    prisma.sale.findMany({
+      where: { eventDate: { not: null }, opportunityId: null },
+      select: { eventDate: true },
+      take: 5000,
+    }),
     // Lost/Abandoned leads NOT lost to a simple date conflict (i.e. we
     // weren't already booked that day) -- these are the ones actually worth
     // digging into (price, competitor, features, or no reason logged at all).
@@ -109,11 +120,15 @@ export default async function ReportsPage({
     : lostNonConflict;
   const lostNonConflictValue = filteredLostLeads.reduce((sum, o) => sum + Number(o.value || 0), 0);
 
+  // Combine leads + unlinked sales into one demand list (see the queries
+  // above for why unlinked sales are included separately from leads).
+  const allDemandDates = [...demandLeadDates, ...demandUnlinkedSales];
+
   // Aggregate onto a generic 31-day month (day-of-month, across every year
   // of data) so patterns like "the 1st of the month is popular" or "this
   // month is consistently our busiest" show up regardless of which year.
   const dayCounts = Array.from({ length: 31 }, () => 0);
-  for (const o of demandLeadDates) {
+  for (const o of allDemandDates) {
     if (!o.eventDate) continue;
     const d = new Date(o.eventDate);
     if (d.getUTCMonth() !== selectedMonth - 1) continue;
@@ -139,7 +154,7 @@ export default async function ReportsPage({
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
-    { key: "demand", label: "Demand by day", count: demandLeadDates.length, icon: BarChart3 },
+    { key: "demand", label: "Demand by day", count: allDemandDates.length, icon: BarChart3 },
     { key: "lost", label: "Lost (non-conflict)", count: lostNonConflict.length, icon: XCircle },
     { key: "stats", label: "Guest & Revenue Stats", count: allSalesStats.length, icon: Calculator },
   ];
@@ -261,9 +276,10 @@ export default async function ReportsPage({
       {tab === "demand" && (
         <div>
           <p className="text-sm text-neutral-600 mb-3">
-            Every lead&apos;s requested event date (won, lost, abandoned, or still open) for {MONTH_NAMES[selectedMonth - 1]}
-            , grouped by day of the month across every year on record. Use this to spot which months and which
-            days within a month get the most requests -- a signal for where it might be worth expanding capacity.
+            Every lead&apos;s requested event date (won, lost, abandoned, or still open), plus any booked sale not
+            tied to a lead record, for {MONTH_NAMES[selectedMonth - 1]}, grouped by day of the month across every
+            year on record. Use this to spot which months and which days within a month get the most requests --
+            a signal for where it might be worth expanding capacity.
           </p>
 
           <div className="flex gap-1.5 mb-4 flex-wrap">
