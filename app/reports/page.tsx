@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Clock, CalendarClock, BarChart3 } from "lucide-react";
+import { Clock, CalendarClock, BarChart3, XCircle } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, lostNonConflict] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -74,7 +74,23 @@ export default async function ReportsPage({
       select: { eventDate: true },
       take: 5000,
     }),
+    // Lost/Abandoned leads NOT lost to a simple date conflict (i.e. we
+    // weren't already booked that day) -- these are the ones actually worth
+    // digging into (price, competitor, features, or no reason logged at all).
+    // Prisma's `not` on a nullable field doesn't automatically catch NULLs,
+    // so those are included explicitly.
+    prisma.opportunity.findMany({
+      where: {
+        status: { in: ["Lost", "Abandoned"] },
+        OR: [{ lossReason: { not: "Conflict Date" } }, { lossReason: null }],
+      },
+      include: { contact: { select: { id: true, name: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+    }),
   ]);
+
+  const lostNonConflictValue = lostNonConflict.reduce((sum, o) => sum + Number(o.value || 0), 0);
 
   // Aggregate onto a generic 31-day month (day-of-month, across every year
   // of data) so patterns like "the 1st of the month is popular" or "this
@@ -94,13 +110,14 @@ export default async function ReportsPage({
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
     { key: "demand", label: "Demand by day", count: demandLeadDates.length, icon: BarChart3 },
+    { key: "lost", label: "Lost (non-conflict)", count: lostNonConflict.length, icon: XCircle },
   ];
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -260,6 +277,53 @@ export default async function ReportsPage({
             </div>
             {demandTotal === 0 && (
               <p className="text-sm text-neutral-500 mt-3">No leads on record requesting a date in this month.</p>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === "lost" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Lost or abandoned leads where the reason wasn&apos;t simply a date conflict (we weren&apos;t already
+            booked) -- these are the ones worth digging into: price, competitor, missing features, or no reason
+            logged at all.
+          </p>
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-3 flex items-center justify-between">
+            <span className="text-sm text-neutral-600">{lostNonConflict.length} lead(s)</span>
+            <span className="text-sm font-medium text-neutral-800">
+              ${lostNonConflictValue.toLocaleString()} in estimated value
+            </span>
+          </div>
+          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
+            {lostNonConflict.map((o) => (
+              <div key={o.id} className="p-3 text-sm flex justify-between gap-4">
+                <div>
+                  <div className="font-medium">{o.name}</div>
+                  <div className="text-neutral-500">
+                    {o.contact ? (
+                      <Link href={`/contacts/${o.contact.id}`} className="hover:underline">
+                        {o.contact.name}
+                      </Link>
+                    ) : (
+                      o.customerNameRaw
+                    )}{" "}
+                    · {o.status}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="inline-block text-xs font-medium bg-sauce/10 text-sauce px-2 py-0.5 rounded-full">
+                    {o.lossReason || "No reason logged"}
+                  </div>
+                  {o.value != null && (
+                    <div className="text-neutral-500 mt-1">${Number(o.value).toLocaleString()}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {lostNonConflict.length === 0 && (
+              <p className="p-3 text-sm text-neutral-500">
+                No lost/abandoned leads outside of date conflicts right now.
+              </p>
             )}
           </div>
         </div>
