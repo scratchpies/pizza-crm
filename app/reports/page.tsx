@@ -1,17 +1,26 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Clock, CalendarClock } from "lucide-react";
+import { Clock, CalendarClock, BarChart3 } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; month?: string };
 }) {
   const tab = searchParams.tab || "stale";
   const now = new Date();
+  // 1-12. Defaults to the current month. Used by the "Demand by day" tab --
+  // deliberately not tied to a specific year, since the whole point is to
+  // aggregate every year's leads onto one generic month to spot patterns.
+  const selectedMonth = Math.min(12, Math.max(1, Number(searchParams.month) || now.getUTCMonth() + 1));
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   // Anchor on UTC midnight of today, not the exact request timestamp --
   // eventDate is always stored as UTC midnight, so comparing it against the
@@ -21,7 +30,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -56,18 +65,42 @@ export default async function ReportsPage({
       orderBy: { eventDate: "asc" },
       take: 500,
     }),
+    // Every lead's requested event date, regardless of outcome (Won, Lost,
+    // Abandoned, still Open) -- a Lost lead still represents real demand for
+    // that date, which is exactly what "should we expand for busy months"
+    // needs to see, not just the leads that turned into bookings.
+    prisma.opportunity.findMany({
+      where: { eventDate: { not: null } },
+      select: { eventDate: true },
+      take: 5000,
+    }),
   ]);
+
+  // Aggregate onto a generic 31-day month (day-of-month, across every year
+  // of data) so patterns like "the 1st of the month is popular" or "this
+  // month is consistently our busiest" show up regardless of which year.
+  const dayCounts = Array.from({ length: 31 }, () => 0);
+  for (const o of demandLeadDates) {
+    if (!o.eventDate) continue;
+    const d = new Date(o.eventDate);
+    if (d.getUTCMonth() !== selectedMonth - 1) continue;
+    dayCounts[d.getUTCDate() - 1] += 1;
+  }
+  const demandTotal = dayCounts.reduce((a, b) => a + b, 0);
+  const maxDayCount = Math.max(...dayCounts, 1);
+  const peakDay = dayCounts.indexOf(maxDayCount) + 1;
 
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
+    { key: "demand", label: "Demand by day", count: demandLeadDates.length, icon: BarChart3 },
   ];
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -176,6 +209,71 @@ export default async function ReportsPage({
           </div>
         </div>
       )}
+
+      {tab === "demand" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Every lead&apos;s requested event date (won, lost, abandoned, or still open) for {MONTH_NAMES[selectedMonth - 1]}
+            , grouped by day of the month across every year on record. Use this to spot which months and which
+            days within a month get the most requests -- a signal for where it might be worth expanding capacity.
+          </p>
+
+          <div className="flex gap-1.5 mb-4 flex-wrap">
+            {MONTH_NAMES.map((name, i) => (
+              <Link
+                key={name}
+                href={`/reports?tab=demand&month=${i + 1}`}
+                className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                  selectedMonth === i + 1
+                    ? "bg-crust text-white"
+                    : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                }`}
+              >
+                {name.slice(0, 3)}
+              </Link>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-neutral-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-neutral-800">
+                {MONTH_NAMES[selectedMonth - 1]} -- requests by day
+              </h2>
+              <span className="text-sm text-neutral-500">
+                {demandTotal} total{demandTotal > 0 ? ` · busiest: the ${peakDay}${ordinalSuffix(peakDay)}` : ""}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <div className="flex items-end gap-1 h-40 min-w-[620px]">
+                {dayCounts.map((count, i) => (
+                  <div key={i} className="flex-1 h-full flex flex-col items-center justify-end gap-1">
+                    <span className="text-[9px] text-neutral-400">{count > 0 ? count : ""}</span>
+                    <div
+                      className={`w-full rounded-t ${count === maxDayCount && count > 0 ? "bg-crust" : "bg-crust/40"}`}
+                      style={{ height: `${Math.max((count / maxDayCount) * 100, count > 0 ? 4 : 1)}%` }}
+                      title={`${MONTH_NAMES[selectedMonth - 1]} ${i + 1}: ${count} lead(s)`}
+                    />
+                    <span className="text-[9px] text-neutral-400">{i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {demandTotal === 0 && (
+              <p className="text-sm text-neutral-500 mt-3">No leads on record requesting a date in this month.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function ordinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
 }
