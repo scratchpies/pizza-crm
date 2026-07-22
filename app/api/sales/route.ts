@@ -10,7 +10,14 @@ export async function GET(req: NextRequest) {
 
   const where: Prisma.SaleWhereInput = {};
   if (status) where.eventStatus = status;
-  if (upcoming === "1") where.eventDate = { gte: new Date() };
+  if (upcoming === "1") {
+    // Anchor on UTC midnight of today, not the exact request timestamp --
+    // eventDate is stored as UTC midnight, so comparing against the live
+    // clock would drop today's events once UTC rolls past midnight.
+    const todayUTC = new Date();
+    todayUTC.setUTCHours(0, 0, 0, 0);
+    where.eventDate = { gte: todayUTC };
+  }
 
   const sales = await prisma.sale.findMany({
     where,

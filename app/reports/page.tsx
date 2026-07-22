@@ -13,7 +13,13 @@ export default async function ReportsPage({
   const tab = searchParams.tab || "stale";
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const sixtyDaysAhead = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+  // Anchor on UTC midnight of today, not the exact request timestamp --
+  // eventDate is always stored as UTC midnight, so comparing it against the
+  // live clock silently drops today's events once UTC rolls past midnight
+  // (mid-afternoon in US timezones).
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+  const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
   const [staleLeads, upcomingSales, upcomingLeadDates] = await Promise.all([
     prisma.opportunity
@@ -39,13 +45,13 @@ export default async function ReportsPage({
           .sort((a, b) => (a.attempts[0]?.contactedAt?.getTime() ?? 0) - (b.attempts[0]?.contactedAt?.getTime() ?? 0))
       ),
     prisma.sale.findMany({
-      where: { eventDate: { gte: now, lte: sixtyDaysAhead } },
+      where: { eventDate: { gte: todayUTC, lte: sixtyDaysAhead } },
       include: { contact: { select: { id: true, name: true } } },
       orderBy: { eventDate: "asc" },
       take: 500,
     }),
     prisma.opportunity.findMany({
-      where: { eventDate: { gte: now, lte: sixtyDaysAhead }, status: { in: ["Open", "Negotiation"] } },
+      where: { eventDate: { gte: todayUTC, lte: sixtyDaysAhead }, status: { in: ["Open", "Negotiation"] } },
       include: { contact: { select: { id: true, name: true } } },
       orderBy: { eventDate: "asc" },
       take: 500,

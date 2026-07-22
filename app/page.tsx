@@ -15,7 +15,13 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const sixtyDaysAhead = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+  // Anchor the "upcoming" window on UTC midnight of today, not the exact
+  // request timestamp -- eventDate is always stored as UTC midnight, so
+  // comparing it against the live clock silently drops today's events the
+  // moment UTC rolls past midnight (mid-afternoon in US timezones).
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+  const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
   const [
@@ -31,7 +37,7 @@ export default async function DashboardPage() {
     prisma.contact.count({ where: { contactType: "Current Customer" } }),
     prisma.contact.count({ where: { contactType: "Potential Customer" } }),
     prisma.opportunity.count({ where: { status: { in: ["Open", "Negotiation"] } } }),
-    prisma.sale.count({ where: { eventDate: { gte: now, lte: sixtyDaysAhead } } }),
+    prisma.sale.count({ where: { eventDate: { gte: todayUTC, lte: sixtyDaysAhead } } }),
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
