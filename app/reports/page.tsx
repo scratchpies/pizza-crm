@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Clock, CalendarClock, BarChart3, XCircle, Calculator } from "lucide-react";
-import { formatDate } from "@/lib/dates";
+import { Clock, CalendarClock, BarChart3, XCircle, Calculator, CalendarX } from "lucide-react";
+import { formatDate, toDateInputValue } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandUnlinkedSales, lostNonConflict, allSalesStats] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandAllSales, lostNonConflict, allSalesStats, pastLeadsWithDate] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -74,18 +74,18 @@ export default async function ReportsPage({
     // needs to see, not just the leads that turned into bookings.
     prisma.opportunity.findMany({
       where: { eventDate: { not: null } },
-      select: { eventDate: true },
+      select: { id: true, eventDate: true },
       take: 5000,
     }),
-    // Plus any Sale that ISN'T linked back to a lead -- a direct booking
-    // entered straight into the Sales tab, or an older historical import
-    // that never got matched to a lead record, still represents real demand
-    // for that date. Sales that DO have a linked lead are skipped here since
-    // that lead's own eventDate already counts it -- otherwise the same
-    // request would be counted twice.
+    // Every sale's event date + which lead (if any) it's linked to. Fetched
+    // separately from the "unlinked-only" approach below because a sale can
+    // be linked to a lead whose OWN eventDate was never filled in (common in
+    // the historical import, which matched sales to leads by contact + date
+    // proximity, not by copying the date onto the lead record) -- in that
+    // case the sale is the only place this date exists at all.
     prisma.sale.findMany({
-      where: { eventDate: { not: null }, opportunityId: null },
-      select: { eventDate: true },
+      where: { eventDate: { not: null } },
+      select: { eventDate: true, opportunityId: true },
       take: 5000,
     }),
     // Lost/Abandoned leads NOT lost to a simple date conflict (i.e. we
@@ -107,6 +107,15 @@ export default async function ReportsPage({
       select: { eventDate: true, guests: true, totalCost: true },
       take: 5000,
     }),
+    // Every lead whose requested date has already passed -- regardless of
+    // status -- for the "Missed opportunities" tab. Only past dates count:
+    // a future lead can still turn into a sale, so it's not "missed" yet.
+    prisma.opportunity.findMany({
+      where: { eventDate: { lt: todayUTC, not: null } },
+      include: { contact: { select: { id: true, name: true } } },
+      orderBy: { eventDate: "desc" },
+      take: 2000,
+    }),
   ]);
 
   // Filtered by the year of the requested event date (not the year it was
@@ -120,9 +129,17 @@ export default async function ReportsPage({
     : lostNonConflict;
   const lostNonConflictValue = filteredLostLeads.reduce((sum, o) => sum + Number(o.value || 0), 0);
 
-  // Combine leads + unlinked sales into one demand list (see the queries
-  // above for why unlinked sales are included separately from leads).
-  const allDemandDates = [...demandLeadDates, ...demandUnlinkedSales];
+  // Combine leads + sales into one demand list, without double-counting a
+  // sale whose linked lead's own eventDate already represents that date.
+  // A sale only needs to be skipped if its linked opportunity was ALSO
+  // counted via demandLeadDates -- if the link exists but that opportunity
+  // had no eventDate of its own (common in historical/imported data), the
+  // sale is the only record of that date and must still be counted.
+  const countedOpportunityIds = new Set(demandLeadDates.map((o) => o.id));
+  const demandSalesToCount = demandAllSales.filter(
+    (s) => !s.opportunityId || !countedOpportunityIds.has(s.opportunityId)
+  );
+  const allDemandDates = [...demandLeadDates, ...demandSalesToCount];
 
   // Aggregate onto a generic 31-day month (day-of-month, across every year
   // of data) so patterns like "the 1st of the month is popular" or "this
@@ -137,6 +154,33 @@ export default async function ReportsPage({
   const demandTotal = dayCounts.reduce((a, b) => a + b, 0);
   const maxDayCount = Math.max(...dayCounts, 1);
   const peakDay = dayCounts.indexOf(maxDayCount) + 1;
+
+  // Missed opportunities: past dates where at least one lead wanted that
+  // date but no Sale exists for that same date -- i.e. we had the demand and
+  // ended up idle instead of booked. Built from a set of every date that DID
+  // result in a sale (from demandAllSales, already fetched above), then any
+  // past lead whose date isn't in that set represents a missed date.
+  const bookedDateKeys = new Set(demandAllSales.filter((s) => s.eventDate).map((s) => toDateInputValue(s.eventDate)));
+  const missedLeads = pastLeadsWithDate.filter(
+    (o) => o.eventDate && !bookedDateKeys.has(toDateInputValue(o.eventDate))
+  );
+  const missedByDate = new Map<string, typeof missedLeads>();
+  for (const o of missedLeads) {
+    const key = toDateInputValue(o.eventDate);
+    const list = missedByDate.get(key) || [];
+    list.push(o);
+    missedByDate.set(key, list);
+  }
+  const missedYears = Array.from(new Set(missedLeads.map((o) => new Date(o.eventDate as Date).getUTCFullYear()))).sort(
+    (a, b) => b - a
+  );
+  const missedDateEntries = Array.from(missedByDate.entries())
+    .filter(([key]) => !selectedYear || Number(key.slice(0, 4)) === selectedYear)
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  const missedTotalValue = missedDateEntries.reduce(
+    (sum, [, leads]) => sum + leads.reduce((s, o) => s + Number(o.value || 0), 0),
+    0
+  );
 
   // Guest & Revenue Stats tab -- filtered by the sale's event year, defaults
   // to every year combined. Reuses the same ?year= param as the Lost tab.
@@ -156,6 +200,7 @@ export default async function ReportsPage({
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
     { key: "demand", label: "Demand by day", count: allDemandDates.length, icon: BarChart3 },
     { key: "lost", label: "Lost (non-conflict)", count: lostNonConflict.length, icon: XCircle },
+    { key: "missed", label: "Missed opportunities", count: missedDateEntries.length, icon: CalendarX },
     { key: "stats", label: "Guest & Revenue Stats", count: allSalesStats.length, icon: Calculator },
   ];
 
@@ -163,7 +208,7 @@ export default async function ReportsPage({
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -400,6 +445,87 @@ export default async function ReportsPage({
             {filteredLostLeads.length === 0 && (
               <p className="p-3 text-sm text-neutral-500">
                 No lost/abandoned leads outside of date conflicts{selectedYear ? ` in ${selectedYear}` : ""}.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === "missed" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Past dates where one or more leads wanted that date, but no sale ended up happening -- capacity that
+            went idle instead of booked. Only past dates are shown, since a future lead can still convert. Filtered
+            by the year of the requested date.
+          </p>
+
+          {missedYears.length > 0 && (
+            <div className="flex gap-1.5 mb-3 flex-wrap">
+              <Link
+                href="/reports?tab=missed"
+                className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                  selectedYear === null
+                    ? "bg-crust text-white"
+                    : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                }`}
+              >
+                All years
+              </Link>
+              {missedYears.map((y) => (
+                <Link
+                  key={y}
+                  href={`/reports?tab=missed&year=${y}`}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                    selectedYear === y
+                      ? "bg-crust text-white"
+                      : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                  }`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-3 flex items-center justify-between">
+            <span className="text-sm text-neutral-600">{missedDateEntries.length} missed date(s)</span>
+            <span className="text-sm font-medium text-neutral-800">
+              ${missedTotalValue.toLocaleString()} in estimated value
+            </span>
+          </div>
+
+          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
+            {missedDateEntries.map(([dateKey, leads]) => (
+              <div key={dateKey} className="p-3 text-sm">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-medium text-neutral-800">{formatDate(dateKey)}</span>
+                  <span className="text-xs text-neutral-500">
+                    {leads.length} lead{leads.length > 1 ? "s" : ""} requested this date
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {leads.map((o) => (
+                    <div key={o.id} className="flex items-center justify-between text-xs text-neutral-500 pl-0.5">
+                      <span>
+                        {o.contact ? (
+                          <Link href={`/contacts/${o.contact.id}`} className="hover:underline">
+                            {o.contact.name}
+                          </Link>
+                        ) : (
+                          o.customerNameRaw || o.name
+                        )}{" "}
+                        · {o.status}
+                        {o.lossReason ? ` (${o.lossReason})` : ""}
+                      </span>
+                      {o.value != null && <span>${Number(o.value).toLocaleString()}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {missedDateEntries.length === 0 && (
+              <p className="p-3 text-sm text-neutral-500">
+                No missed dates found{selectedYear ? ` in ${selectedYear}` : ""} -- every past requested date either
+                converted to a sale or hasn&apos;t happened yet.
               </p>
             )}
           </div>
