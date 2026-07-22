@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Clock, CalendarClock, BarChart3, XCircle } from "lucide-react";
+import { Clock, CalendarClock, BarChart3, XCircle, Calculator } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, lostNonConflict] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, lostNonConflict, allSalesStats] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -91,6 +91,11 @@ export default async function ReportsPage({
       orderBy: { updatedAt: "desc" },
       take: 500,
     }),
+    // Raw guests/totalCost for every sale, for the Guest & Revenue Stats tab.
+    prisma.sale.findMany({
+      select: { eventDate: true, guests: true, totalCost: true },
+      take: 5000,
+    }),
   ]);
 
   // Filtered by the year of the requested event date (not the year it was
@@ -118,18 +123,32 @@ export default async function ReportsPage({
   const maxDayCount = Math.max(...dayCounts, 1);
   const peakDay = dayCounts.indexOf(maxDayCount) + 1;
 
+  // Guest & Revenue Stats tab -- filtered by the sale's event year, defaults
+  // to every year combined. Reuses the same ?year= param as the Lost tab.
+  const saleYears = Array.from(
+    new Set(allSalesStats.filter((s) => s.eventDate).map((s) => new Date(s.eventDate as Date).getUTCFullYear()))
+  ).sort((a, b) => b - a);
+  const filteredSalesStats = selectedYear
+    ? allSalesStats.filter((s) => s.eventDate && new Date(s.eventDate).getUTCFullYear() === selectedYear)
+    : allSalesStats;
+  const guestValues = filteredSalesStats.filter((s) => s.guests != null).map((s) => Number(s.guests));
+  const revenueValues = filteredSalesStats.filter((s) => s.totalCost != null).map((s) => Number(s.totalCost));
+  const guestStats = computeStats(guestValues);
+  const revenueStats = computeStats(revenueValues);
+
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
     { key: "demand", label: "Demand by day", count: demandLeadDates.length, icon: BarChart3 },
     { key: "lost", label: "Lost (non-conflict)", count: lostNonConflict.length, icon: XCircle },
+    { key: "stats", label: "Guest & Revenue Stats", count: allSalesStats.length, icon: Calculator },
   ];
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -370,6 +389,47 @@ export default async function ReportsPage({
           </div>
         </div>
       )}
+      {tab === "stats" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Low, high, mean, median, and mode across every booked sale -- for guest count and total sale value.
+            Filter by year to compare one season against another.
+          </p>
+
+          {saleYears.length > 0 && (
+            <div className="flex gap-1.5 mb-4 flex-wrap">
+              <Link
+                href="/reports?tab=stats"
+                className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                  selectedYear === null
+                    ? "bg-crust text-white"
+                    : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                }`}
+              >
+                All years
+              </Link>
+              {saleYears.map((y) => (
+                <Link
+                  key={y}
+                  href={`/reports?tab=stats&year=${y}`}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                    selectedYear === y
+                      ? "bg-crust text-white"
+                      : "bg-white border border-neutral-200 text-neutral-600 hover:border-crust/40"
+                  }`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StatsCard title="Guests per sale" stats={guestStats} format={(n) => n.toLocaleString()} />
+            <StatsCard title="Total sale value" stats={revenueStats} format={(n) => `$${n.toLocaleString()}`} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -382,4 +442,68 @@ function ordinalSuffix(day: number): string {
     case 3: return "rd";
     default: return "th";
   }
+}
+
+type Stats = { low: number; high: number; mean: number; median: number; modes: number[]; n: number };
+
+// Standard five-number-ish summary. Mode returns every value tied for most
+// frequent -- if nothing repeats (common for dollar amounts), that's shown
+// as "no repeats" rather than picking an arbitrary value.
+function computeStats(raw: number[]): Stats | null {
+  if (raw.length === 0) return null;
+  const values = [...raw].sort((a, b) => a - b);
+  const n = values.length;
+  const low = values[0];
+  const high = values[n - 1];
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const median = n % 2 === 1 ? values[(n - 1) / 2] : (values[n / 2 - 1] + values[n / 2]) / 2;
+
+  const freq = new Map<number, number>();
+  for (const v of values) freq.set(v, (freq.get(v) || 0) + 1);
+  const maxFreq = Math.max(...freq.values());
+  const modes = maxFreq > 1 ? [...freq.entries()].filter(([, c]) => c === maxFreq).map(([v]) => v).sort((a, b) => a - b) : [];
+
+  return { low, high, mean, median, modes, n };
+}
+
+function StatsCard({
+  title,
+  stats,
+  format,
+}: {
+  title: string;
+  stats: Stats | null;
+  format: (n: number) => string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-neutral-200 p-5">
+      <h2 className="font-semibold text-neutral-800 mb-1">{title}</h2>
+      {!stats ? (
+        <p className="text-sm text-neutral-500">No data for this selection.</p>
+      ) : (
+        <>
+          <p className="text-xs text-neutral-400 mb-3">Based on {stats.n} sale(s)</p>
+          <div className="divide-y divide-neutral-100 text-sm">
+            <Row label="Low" value={format(stats.low)} />
+            <Row label="High" value={format(stats.high)} />
+            <Row label="Mean" value={format(Math.round(stats.mean * 100) / 100)} />
+            <Row label="Median" value={format(stats.median)} />
+            <Row
+              label="Mode"
+              value={stats.modes.length > 0 ? stats.modes.map(format).join(" / ") : "No repeats"}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between py-2">
+      <span className="text-neutral-500">{label}</span>
+      <span className="font-medium text-neutral-800">{value}</span>
+    </div>
+  );
 }
