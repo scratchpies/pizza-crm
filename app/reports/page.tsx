@@ -351,18 +351,29 @@ export default async function ReportsPage({
 
   // Menu popularity: tally pizza flavor fields and split the freeform
   // "additional items" text into individual items, across every sale.
-  const pizzaCounts = new Map<string, number>();
-  const itemCounts = new Map<string, number>();
+  // Keyed case-/whitespace-insensitively (lowercased, collapsed spaces) so
+  // "Italian Deli" and "italian  deli" (a stray extra space, different
+  // capitalization -- common with hand-typed data) count toward the same
+  // total instead of silently splitting into two separate rows, each
+  // undercounting. The first-seen casing is kept as the display label.
+  const pizzaCounts = new Map<string, { label: string; count: number }>();
+  const itemCounts = new Map<string, { label: string; count: number }>();
+  function normalizeLabel(name: string): string {
+    return name.trim().replace(/\s+/g, " ");
+  }
+  function tallyInto(map: Map<string, { label: string; count: number }>, raw: string | null) {
+    const label = raw ? normalizeLabel(raw) : "";
+    if (!label) return;
+    const key = label.toLowerCase();
+    const existing = map.get(key);
+    map.set(key, { label: existing?.label ?? label, count: (existing?.count ?? 0) + 1 });
+  }
   function tallyPizza(name: string | null) {
-    const key = name?.trim();
-    if (!key) return;
-    pizzaCounts.set(key, (pizzaCounts.get(key) || 0) + 1);
+    tallyInto(pizzaCounts, name);
   }
   function tallyItems(raw: string | null) {
     if (!raw) return;
-    for (const item of raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
-      itemCounts.set(item, (itemCounts.get(item) || 0) + 1);
-    }
+    for (const item of raw.split(/[,;]/)) tallyInto(itemCounts, item);
   }
   // "Additional pizza" is a freeform field like "additional items" -- it can
   // hold more than one flavor (e.g. "Margherita, Buffalo Chicken") rather
@@ -372,9 +383,7 @@ export default async function ReportsPage({
   // entry.
   function tallyAdditionalPizza(raw: string | null) {
     if (!raw) return;
-    for (const flavor of raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
-      tallyPizza(flavor);
-    }
+    for (const flavor of raw.split(/[,;]/)) tallyPizza(flavor);
   }
   for (const s of menuSales) {
     tallyPizza(s.pizza1);
@@ -384,10 +393,10 @@ export default async function ReportsPage({
     tallyAdditionalPizza(s.additionalPizza);
     tallyItems(s.additionalItems);
   }
-  const topPizzas = Array.from(pizzaCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
-  const topItems = Array.from(itemCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
-  const maxPizzaCount = Math.max(...topPizzas.map(([, c]) => c), 1);
-  const maxItemCount = Math.max(...topItems.map(([, c]) => c), 1);
+  const topPizzas = Array.from(pizzaCounts.values()).sort((a, b) => b.count - a.count).slice(0, 15);
+  const topItems = Array.from(itemCounts.values()).sort((a, b) => b.count - a.count).slice(0, 15);
+  const maxPizzaCount = Math.max(...topPizzas.map((p) => p.count), 1);
+  const maxItemCount = Math.max(...topItems.map((p) => p.count), 1);
 
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
@@ -890,16 +899,16 @@ export default async function ReportsPage({
             <div className="bg-white rounded-xl border border-neutral-200 p-5">
               <h2 className="font-semibold text-neutral-800 mb-3">Pizza flavors</h2>
               <div className="space-y-2">
-                {topPizzas.map(([name, count]) => (
-                  <div key={name}>
+                {topPizzas.map((p) => (
+                  <div key={p.label}>
                     <div className="flex justify-between text-sm mb-0.5">
-                      <span className="text-neutral-700">{name}</span>
-                      <span className="text-neutral-500">{count}</span>
+                      <span className="text-neutral-700">{p.label}</span>
+                      <span className="text-neutral-500">{p.count}</span>
                     </div>
                     <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-crust rounded-full"
-                        style={{ width: `${(count / maxPizzaCount) * 100}%` }}
+                        style={{ width: `${(p.count / maxPizzaCount) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -912,16 +921,16 @@ export default async function ReportsPage({
             <div className="bg-white rounded-xl border border-neutral-200 p-5">
               <h2 className="font-semibold text-neutral-800 mb-3">Additional items</h2>
               <div className="space-y-2">
-                {topItems.map(([name, count]) => (
-                  <div key={name}>
+                {topItems.map((p) => (
+                  <div key={p.label}>
                     <div className="flex justify-between text-sm mb-0.5">
-                      <span className="text-neutral-700">{name}</span>
-                      <span className="text-neutral-500">{count}</span>
+                      <span className="text-neutral-700">{p.label}</span>
+                      <span className="text-neutral-500">{p.count}</span>
                     </div>
                     <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-basil rounded-full"
-                        style={{ width: `${(count / maxItemCount) * 100}%` }}
+                        style={{ width: `${(p.count / maxItemCount) * 100}%` }}
                       />
                     </div>
                   </div>
