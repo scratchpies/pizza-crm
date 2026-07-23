@@ -33,7 +33,7 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandAllSales, lostNonConflict, allSalesStats, pastLeadsWithDate] = await Promise.all([
+  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandAllSales, lostNonConflict, allSalesStats, pastLeadsWithDate, totalLeadsCount, totalSalesCount] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -116,6 +116,10 @@ export default async function ReportsPage({
       orderBy: { eventDate: "desc" },
       take: 2000,
     }),
+    // Grand totals for the Win rate line on the Guest & Revenue Stats tab --
+    // every lead ever logged and every sale ever booked, regardless of date.
+    prisma.opportunity.count(),
+    prisma.sale.count(),
   ]);
 
   // Filtered by the year of the requested event date (not the year it was
@@ -194,6 +198,20 @@ export default async function ReportsPage({
   const revenueValues = filteredSalesStats.filter((s) => s.totalCost != null).map((s) => Number(s.totalCost));
   const guestStats = computeStats(guestValues);
   const revenueStats = computeStats(revenueValues);
+
+  // Win rate: sales booked vs. leads received. All-time uses the grand
+  // totals (every lead/sale ever logged, dated or not). The by-year number
+  // only has something to bucket leads/sales that actually have an
+  // eventDate, so it's a slightly narrower slice than the all-time figure.
+  const overallWinRate = totalLeadsCount > 0 ? (totalSalesCount / totalLeadsCount) * 100 : null;
+  const leadsInSelectedYear = selectedYear
+    ? demandLeadDates.filter((o) => o.eventDate && new Date(o.eventDate).getUTCFullYear() === selectedYear).length
+    : 0;
+  const salesInSelectedYear = selectedYear
+    ? allSalesStats.filter((s) => s.eventDate && new Date(s.eventDate).getUTCFullYear() === selectedYear).length
+    : 0;
+  const yearWinRate =
+    selectedYear && leadsInSelectedYear > 0 ? (salesInSelectedYear / leadsInSelectedYear) * 100 : null;
 
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
@@ -566,9 +584,33 @@ export default async function ReportsPage({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <StatsCard title="Guests per sale" stats={guestStats} format={(n) => n.toLocaleString()} />
             <StatsCard title="Total sale value" stats={revenueStats} format={(n) => `$${n.toLocaleString()}`} />
+            <div className="bg-white rounded-xl border border-neutral-200 p-5">
+              <h2 className="font-semibold text-neutral-800 mb-1">Win rate</h2>
+              <p className="text-xs text-neutral-400 mb-3">Sales booked ÷ leads received</p>
+              <div className="divide-y divide-neutral-100 text-sm">
+                <Row
+                  label="All-time"
+                  value={
+                    overallWinRate != null
+                      ? `${overallWinRate.toFixed(1)}% (${totalSalesCount}/${totalLeadsCount})`
+                      : "No leads yet"
+                  }
+                />
+                {selectedYear && (
+                  <Row
+                    label={`${selectedYear}`}
+                    value={
+                      yearWinRate != null
+                        ? `${yearWinRate.toFixed(1)}% (${salesInSelectedYear}/${leadsInSelectedYear})`
+                        : "No dated leads this year"
+                    }
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
