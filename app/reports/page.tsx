@@ -364,12 +364,24 @@ export default async function ReportsPage({
       itemCounts.set(item, (itemCounts.get(item) || 0) + 1);
     }
   }
+  // "Additional pizza" is a freeform field like "additional items" -- it can
+  // hold more than one flavor (e.g. "Margherita, Buffalo Chicken") rather
+  // than exactly one like pizza1-4. Splitting it the same way as additional
+  // items and tallying each piece through tallyPizza merges it into the same
+  // flavor counts instead of the whole raw string becoming its own oddball
+  // entry.
+  function tallyAdditionalPizza(raw: string | null) {
+    if (!raw) return;
+    for (const flavor of raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
+      tallyPizza(flavor);
+    }
+  }
   for (const s of menuSales) {
     tallyPizza(s.pizza1);
     tallyPizza(s.pizza2);
     tallyPizza(s.pizza3);
     tallyPizza(s.pizza4);
-    tallyPizza(s.additionalPizza);
+    tallyAdditionalPizza(s.additionalPizza);
     tallyItems(s.additionalItems);
   }
   const topPizzas = Array.from(pizzaCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
