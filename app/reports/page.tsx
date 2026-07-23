@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Clock, CalendarClock, BarChart3, XCircle, Calculator, CalendarX } from "lucide-react";
+import { Clock, CalendarClock, BarChart3, XCircle, Calculator, CalendarX, TrendingUp, Wallet, Scale, PieChart } from "lucide-react";
 import { formatDate, toDateInputValue } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,22 @@ export default async function ReportsPage({
   todayUTC.setUTCHours(0, 0, 0, 0);
   const sixtyDaysAhead = new Date(todayUTC.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  const [staleLeads, upcomingSales, upcomingLeadDates, demandLeadDates, demandAllSales, lostNonConflict, allSalesStats, pastLeadsWithDate, totalLeadsCount, totalSalesCount] = await Promise.all([
+  const [
+    staleLeads,
+    upcomingSales,
+    upcomingLeadDates,
+    demandLeadDates,
+    demandAllSales,
+    lostNonConflict,
+    allSalesStats,
+    pastLeadsWithDate,
+    totalLeadsCount,
+    totalSalesCount,
+    forecastOpenLeads,
+    outstandingSalesRaw,
+    quotedVsActualLeads,
+    menuSales,
+  ] = await Promise.all([
     prisma.opportunity
       .findMany({
         where: { status: { in: ["Open", "Negotiation", "Follow-up"] } },
@@ -120,6 +135,64 @@ export default async function ReportsPage({
     // every lead ever logged and every sale ever booked, regardless of date.
     prisma.opportunity.count(),
     prisma.sale.count(),
+    // Open leads with a future requested date, for the Forecasted Revenue
+    // tab -- quoted value gets weighted by the historical win rate below.
+    prisma.opportunity.findMany({
+      where: { status: { in: ["Open", "Negotiation"] }, eventDate: { gte: todayUTC } },
+      select: {
+        id: true,
+        name: true,
+        value: true,
+        eventDate: true,
+        contact: { select: { id: true, name: true } },
+        customerNameRaw: true,
+      },
+      orderBy: { eventDate: "asc" },
+      take: 1000,
+    }),
+    // Booked sales not yet marked paid in full, for the Outstanding Balances
+    // tab. Prisma's `not: true` on a nullable Boolean doesn't reliably catch
+    // NULL rows either, so both false and null are listed explicitly.
+    prisma.sale.findMany({
+      where: { OR: [{ paidInFull: false }, { paidInFull: null }] },
+      select: {
+        id: true,
+        eventDate: true,
+        clientNameRaw: true,
+        totalCost: true,
+        depositPaid: true,
+        contact: { select: { id: true, name: true } },
+      },
+      orderBy: { eventDate: "asc" },
+      take: 1000,
+    }),
+    // Leads with a quoted value that turned into a booked sale with a final
+    // total, for the Quoted vs Actual tab. Only the first linked sale is
+    // used per lead (a lead normally only ever books one job).
+    prisma.opportunity.findMany({
+      where: { value: { not: null }, sales: { some: { totalCost: { not: null } } } },
+      select: {
+        id: true,
+        name: true,
+        value: true,
+        contact: { select: { id: true, name: true } },
+        customerNameRaw: true,
+        sales: { select: { id: true, totalCost: true, eventDate: true }, take: 1 },
+      },
+      take: 1000,
+    }),
+    // Pizza/item choices across every sale, for the Menu Popularity tab.
+    prisma.sale.findMany({
+      select: {
+        pizza1: true,
+        pizza2: true,
+        pizza3: true,
+        pizza4: true,
+        additionalPizza: true,
+        additionalItems: true,
+      },
+      take: 5000,
+    }),
   ]);
 
   // Filtered by the year of the requested event date (not the year it was
@@ -213,12 +286,107 @@ export default async function ReportsPage({
   const yearWinRate =
     selectedYear && leadsInSelectedYear > 0 ? (salesInSelectedYear / leadsInSelectedYear) * 100 : null;
 
+  // Forecasted revenue: quoted value of open leads with a future date,
+  // weighted by the same historical win rate computed above, instead of
+  // counting the full pipeline as if every open quote will close.
+  const winRateDecimal = totalLeadsCount > 0 ? totalSalesCount / totalLeadsCount : 0;
+  const forecastWindows = [30, 60, 90].map((days) => {
+    const cutoff = new Date(todayUTC.getTime() + days * 24 * 60 * 60 * 1000);
+    const leads = forecastOpenLeads.filter((o) => o.eventDate && new Date(o.eventDate) <= cutoff);
+    const pipelineValue = leads.reduce((sum, o) => sum + Number(o.value || 0), 0);
+    return { days, count: leads.length, pipelineValue, expectedRevenue: pipelineValue * winRateDecimal };
+  });
+
+  // Outstanding balances: booked sales not paid in full, with the actual
+  // dollar amount still owed. A $0 (or negative, e.g. an overpaid deposit)
+  // balance is excluded even if paidInFull wasn't flipped to true -- it's
+  // not actually money owed, just a data-entry gap.
+  const outstandingRows = outstandingSalesRaw
+    .map((s) => {
+      const total = Number(s.totalCost || 0);
+      const deposit = Number(s.depositPaid || 0);
+      return { ...s, total, deposit, balance: total - deposit };
+    })
+    .filter((s) => s.balance > 0)
+    .sort((a, b) => {
+      if (!a.eventDate && !b.eventDate) return 0;
+      if (!a.eventDate) return 1;
+      if (!b.eventDate) return -1;
+      return new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime();
+    });
+  const outstandingTotal = outstandingRows.reduce((sum, r) => sum + r.balance, 0);
+
+  // Quoted vs actual: a lead's original quoted value vs. the final total on
+  // the sale it became, to spot systematic under- or over-quoting.
+  const quotedVsActualRows = quotedVsActualLeads
+    .filter((o) => o.sales.length > 0 && o.sales[0].totalCost != null)
+    .map((o) => {
+      const quoted = Number(o.value || 0);
+      const actual = Number(o.sales[0].totalCost || 0);
+      const diff = actual - quoted;
+      return {
+        id: o.id,
+        name: o.name,
+        contact: o.contact,
+        customerNameRaw: o.customerNameRaw,
+        eventDate: o.sales[0].eventDate,
+        quoted,
+        actual,
+        diff,
+        diffPct: quoted !== 0 ? (diff / quoted) * 100 : null,
+      };
+    })
+    .sort((a, b) => {
+      const ad = a.eventDate ? new Date(a.eventDate).getTime() : 0;
+      const bd = b.eventDate ? new Date(b.eventDate).getTime() : 0;
+      return bd - ad;
+    });
+  const avgDiff =
+    quotedVsActualRows.length > 0
+      ? quotedVsActualRows.reduce((sum, r) => sum + r.diff, 0) / quotedVsActualRows.length
+      : null;
+  const diffPctValues = quotedVsActualRows.map((r) => r.diffPct).filter((v): v is number => v != null);
+  const avgDiffPct =
+    diffPctValues.length > 0 ? diffPctValues.reduce((sum, v) => sum + v, 0) / diffPctValues.length : null;
+
+  // Menu popularity: tally pizza flavor fields and split the freeform
+  // "additional items" text into individual items, across every sale.
+  const pizzaCounts = new Map<string, number>();
+  const itemCounts = new Map<string, number>();
+  function tallyPizza(name: string | null) {
+    const key = name?.trim();
+    if (!key) return;
+    pizzaCounts.set(key, (pizzaCounts.get(key) || 0) + 1);
+  }
+  function tallyItems(raw: string | null) {
+    if (!raw) return;
+    for (const item of raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
+      itemCounts.set(item, (itemCounts.get(item) || 0) + 1);
+    }
+  }
+  for (const s of menuSales) {
+    tallyPizza(s.pizza1);
+    tallyPizza(s.pizza2);
+    tallyPizza(s.pizza3);
+    tallyPizza(s.pizza4);
+    tallyPizza(s.additionalPizza);
+    tallyItems(s.additionalItems);
+  }
+  const topPizzas = Array.from(pizzaCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const topItems = Array.from(itemCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const maxPizzaCount = Math.max(...topPizzas.map(([, c]) => c), 1);
+  const maxItemCount = Math.max(...topItems.map(([, c]) => c), 1);
+
   const tabs = [
     { key: "stale", label: "Stale leads", count: staleLeads.length, icon: Clock },
     { key: "events", label: "Upcoming", count: upcomingSales.length + upcomingLeadDates.length, icon: CalendarClock },
     { key: "demand", label: "Demand by day", count: allDemandDates.length, icon: BarChart3 },
     { key: "lost", label: "Lost (non-conflict)", count: lostNonConflict.length, icon: XCircle },
     { key: "missed", label: "Missed opportunities", count: missedDateEntries.length, icon: CalendarX },
+    { key: "forecast", label: "Forecasted revenue", count: forecastOpenLeads.length, icon: TrendingUp },
+    { key: "outstanding", label: "Outstanding balances", count: outstandingRows.length, icon: Wallet },
+    { key: "quoted", label: "Quoted vs actual", count: quotedVsActualRows.length, icon: Scale },
+    { key: "menu", label: "Menu popularity", count: menuSales.length, icon: PieChart },
     { key: "stats", label: "Guest & Revenue Stats", count: allSalesStats.length, icon: Calculator },
   ];
 
@@ -226,7 +394,7 @@ export default async function ReportsPage({
     <div>
       <h1 className="text-2xl font-bold text-neutral-800 mb-4">Reports</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         {tabs.map((t) => (
           <Link
             key={t.key}
@@ -546,6 +714,211 @@ export default async function ReportsPage({
                 converted to a sale or hasn&apos;t happened yet.
               </p>
             )}
+          </div>
+        </div>
+      )}
+      {tab === "forecast" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Quoted value of open leads with a future event date, weighted by your historical win rate (
+            {(winRateDecimal * 100).toFixed(1)}%) -- a more realistic estimate of what&apos;s actually likely to
+            close than counting every open quote at full value.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            {forecastWindows.map((w) => (
+              <div key={w.days} className="bg-white rounded-xl border border-neutral-200 p-5">
+                <h2 className="font-semibold text-neutral-800 mb-1">Next {w.days} days</h2>
+                <p className="text-xs text-neutral-400 mb-3">
+                  {w.count} open lead{w.count === 1 ? "" : "s"} · ${w.pipelineValue.toLocaleString()} quoted
+                </p>
+                <div className="text-2xl font-bold text-crust">
+                  ${Math.round(w.expectedRevenue).toLocaleString()}
+                </div>
+                <div className="text-xs text-neutral-500 mt-1">expected revenue</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
+            {forecastOpenLeads.map((o) => (
+              <div key={o.id} className="p-3 text-sm flex justify-between gap-4">
+                <div>
+                  <div className="font-medium">{o.name}</div>
+                  <div className="text-neutral-500">
+                    {o.contact ? (
+                      <Link href={`/contacts/${o.contact.id}`} className="hover:underline">
+                        {o.contact.name}
+                      </Link>
+                    ) : (
+                      o.customerNameRaw
+                    )}
+                  </div>
+                </div>
+                <div className="text-right text-neutral-500">
+                  <div>{o.eventDate ? formatDate(o.eventDate) : ""}</div>
+                  {o.value != null && <div>${Number(o.value).toLocaleString()} quoted</div>}
+                </div>
+              </div>
+            ))}
+            {forecastOpenLeads.length === 0 && (
+              <p className="p-3 text-sm text-neutral-500">No open leads with a future date on record.</p>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === "outstanding" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Booked sales not yet marked paid in full, with the balance still owed. Sorted by event date, soonest
+            first -- events already in the past with a balance remaining are flagged.
+          </p>
+
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-3 flex items-center justify-between">
+            <span className="text-sm text-neutral-600">{outstandingRows.length} sale(s) with a balance due</span>
+            <span className="text-sm font-medium text-neutral-800">
+              ${outstandingTotal.toLocaleString()} outstanding
+            </span>
+          </div>
+
+          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
+            {outstandingRows.map((s) => {
+              const isPast = s.eventDate ? new Date(s.eventDate) < todayUTC : false;
+              return (
+                <div key={s.id} className="p-3 text-sm flex justify-between gap-4">
+                  <div>
+                    <Link href={`/sales/${s.id}`} className="font-medium hover:underline">
+                      {s.contact ? s.contact.name : s.clientNameRaw || "Sale"}
+                    </Link>
+                    <div className="text-neutral-500">
+                      {s.eventDate ? formatDate(s.eventDate) : "No date"}
+                      {isPast && <span className="text-sauce font-medium"> · past due</span>}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium text-sauce">${s.balance.toLocaleString()} owed</div>
+                    <div className="text-neutral-500 text-xs">
+                      ${s.deposit.toLocaleString()} of ${s.total.toLocaleString()} paid
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {outstandingRows.length === 0 && (
+              <p className="p-3 text-sm text-neutral-500">Everything&apos;s paid up.</p>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === "quoted" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Each lead&apos;s originally quoted value against the final total on the sale it became, to spot
+            whether quotes consistently run under or over the actual job cost.
+          </p>
+
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm text-neutral-600">
+              {quotedVsActualRows.length} booked sale(s) with a quote on file
+            </span>
+            <span className="text-sm font-medium text-neutral-800">
+              {avgDiff != null &&
+                `Avg. ${avgDiff >= 0 ? "+" : "-"}$${Math.round(Math.abs(avgDiff)).toLocaleString()}`}
+              {avgDiffPct != null && ` (${avgDiffPct >= 0 ? "+" : ""}${avgDiffPct.toFixed(1)}%)`}
+            </span>
+          </div>
+
+          <div className="bg-white rounded-xl border border-neutral-200 divide-y divide-neutral-100">
+            {quotedVsActualRows.map((r) => (
+              <div key={r.id} className="p-3 text-sm flex justify-between gap-4">
+                <div>
+                  <div className="font-medium">{r.name}</div>
+                  <div className="text-neutral-500">
+                    {r.contact ? (
+                      <Link href={`/contacts/${r.contact.id}`} className="hover:underline">
+                        {r.contact.name}
+                      </Link>
+                    ) : (
+                      r.customerNameRaw
+                    )}
+                    {r.eventDate ? ` · ${formatDate(r.eventDate)}` : ""}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-neutral-500">
+                    ${r.quoted.toLocaleString()} quoted -&gt; ${r.actual.toLocaleString()} actual
+                  </div>
+                  <div
+                    className={`font-medium ${
+                      r.diff > 0 ? "text-basil" : r.diff < 0 ? "text-sauce" : "text-neutral-500"
+                    }`}
+                  >
+                    {r.diff >= 0 ? "+" : "-"}${Math.round(Math.abs(r.diff)).toLocaleString()}
+                    {r.diffPct != null ? ` (${r.diffPct >= 0 ? "+" : ""}${r.diffPct.toFixed(1)}%)` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {quotedVsActualRows.length === 0 && (
+              <p className="p-3 text-sm text-neutral-500">
+                No booked sales have both a quoted value and a final total yet.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {tab === "menu" && (
+        <div>
+          <p className="text-sm text-neutral-600 mb-3">
+            Tally of pizza flavors and additional items across every booked sale ({menuSales.length} total) --
+            useful for ingredient planning and deciding what to feature on the menu.
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-5">
+              <h2 className="font-semibold text-neutral-800 mb-3">Pizza flavors</h2>
+              <div className="space-y-2">
+                {topPizzas.map(([name, count]) => (
+                  <div key={name}>
+                    <div className="flex justify-between text-sm mb-0.5">
+                      <span className="text-neutral-700">{name}</span>
+                      <span className="text-neutral-500">{count}</span>
+                    </div>
+                    <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-crust rounded-full"
+                        style={{ width: `${(count / maxPizzaCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {topPizzas.length === 0 && (
+                  <p className="text-sm text-neutral-500">No pizza flavors logged yet.</p>
+                )}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200 p-5">
+              <h2 className="font-semibold text-neutral-800 mb-3">Additional items</h2>
+              <div className="space-y-2">
+                {topItems.map(([name, count]) => (
+                  <div key={name}>
+                    <div className="flex justify-between text-sm mb-0.5">
+                      <span className="text-neutral-700">{name}</span>
+                      <span className="text-neutral-500">{count}</span>
+                    </div>
+                    <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-basil rounded-full"
+                        style={{ width: `${(count / maxItemCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {topItems.length === 0 && (
+                  <p className="text-sm text-neutral-500">No additional items logged yet.</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
