@@ -13,6 +13,7 @@ import {
   Upload,
   LogOut,
   Pizza,
+  MessageCircle,
 } from "lucide-react";
 
 const mainLinks = [
@@ -22,6 +23,7 @@ const mainLinks = [
   { href: "/sales", label: "Sales", icon: Receipt },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
 ];
 
 const moreLinks = [
